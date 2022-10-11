@@ -1,0 +1,423 @@
+---
+title: "Sugarmod models"
+author: "Pannaree"
+date: "03/09/2022"
+output: html_document
+---
+
+## 1. sugarmod - used with inputCer2003
+- inputfun = inputfun 
+```{r}
+#sugarmod is the function that solves the set of ODEs
+sugarmod <- function(times,inputfun,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035) #all parameters values are extracted from the paper
+{
+  ## sugar is the function that contains the ODEs
+  sugar <- function(t,x,paras,input)
+  { with(as.list(c(x,paras)),{
+    # Input variables #must change t from 1 to 961 to
+    FW <- input(t=times[t])[[2]] # fruit fresh mass [g]#
+    DW <- input(t=times[t])[[3]] # fruit dry mass [g]
+    DW_dt <- input(t=times[t])[[4]] # fruit dry mass growth rate [g/h]
+    Temp <-input(t=times[t])[[6]] # air temperature [oC]
+    age<- input(t=times[t])[[1]]
+    # Calculate the degree days after anthesis [dd/h]
+    if(Temp > 26){
+      dCDD <- (26-C-(Temp -26))/24
+    }else{
+      dCDD <- (Temp - C)/24 
+    }
+    # Calculate the respiration
+    Rm <- qm * DW * Q10^((Temp-20)/10) #[gC /h]
+    Rg <- ifelse(max(0,DW_dt),qg * DW_dt,0) #[gC /h] #ifelse(test, yes, no); if DW_dt<0, Rg=0
+    dCrep <- Rm + Rg 
+    # Calculate the actual fruit water content (%)
+    WC <- (1- DW/FW) *100 
+    # Calculate the conversion coefficients k1 and k3
+    #WCmax <- 100-( 15.71 * exp(-0.00779*t) + 4.66 ) ## for Levovil
+    WCmax <- 100- (23.39 * exp(-0.0211*age)+10.60) ## for Cervil 
+    k1 <- ld * exp(ap*(WCmax - WC)) * (DW_dt/DW)^(exp(bt*(WCmax - WC)))
+    k2 <- k2
+    k3 <- k30* exp(gama*(WCmax - WC)) /(1+ exp((CDD - u)/tau))
+    # Calculate the carbon supply from phloem
+    dCsup <- DW_dt * c_DW + dCrep #[gC /h]
+    # Calculate the carbon variation in soluble sugar
+    dCsol <- dCsup + k2 * Csta -(k1+k3) * Csol - dCrep #[gC /h]
+    # Calculate the carbon variation in starch
+    dCsta <- k3 * Csol - k2 * Csta #[gC /h]
+    # Calculate the carbon variation in structural compounds
+    dCsyn <- k1 * Csol #[gC /h]
+    # Calculate the content and concentration of soluble and starch
+    Sugar <- Csol / c_sol # [g sugar]
+    Starch <- Csta / c_sta # [g starch]
+    Struct <- DW - Sugar -Starch # [g structural compounds]
+    SS <- Sugar / DW *100 # [g sugar/100g DW]
+    ST <- Starch / DW *100 # [g starch/100g DW]
+    SSC <- Sugar / FW *100 # [g sugar/100g FW]
+    STC <- Starch / FW *100 # [g starch/100g FW]
+  # Return the results
+    res <- list(c(dCDD,dCsol,dCsta,dCsyn),Sugar,Starch,Struct,SS,ST,SSC,STC,k1,k2,k3,WC)
+  return(res)
+  })
+  }
+  # simulation duration
+  times <- times
+  # parameters
+  parms <- c(c_DW = c_DW, c_sol = c_sol, c_sta = c_sta, C = C ,ld = ld, k2 = k2, k30= k30,u= u, tau= tau, qg = qg, qm = qm, Q10 = Q10, ap = ap, bt = bt, gama = gama)
+  # initialisation
+  DW0 <- inputfun(t=times[1])[[3]] #at Age=120d (minimum DAA)
+  Csol0 <- DW0 * 5.63/100 * c_sol #5.63=SS (g/100gDW) of Cer2003 at miminum DAA
+  Csta0 <- DW0 * 10.788/100 * c_sta #same logic as above
+  Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+  CDD0 <- 100 #guess jaa
+  xStart <- c(CDD = CDD0 ,Csol = Csol0, Csta = Csta0, Csyn = Csyn0)
+  names(xStart) <- c("CDD","Csol","Csta","Csyn")
+  # Solve the model
+  library(deSolve)
+  out <- ode(y = xStart, times = times, func = sugar, parms = parms, input = inputfun, method = rkMethod("rk4"))
+  out
+}
+```
+
+## 2. sugarmodH - used with inputCer2007 under CC conditions
+- inputfun = inputfunH or inputfunL for inputCer2007HL or inputCer2007LL, respectively
+- modify DW0, CsolO, Csta0, Csyn0 to be of non-adjusted 2007HL and 2007LL
+- No modification of WC as a result for heat treatment
+## 2.1: for HL
+```{r}
+sugarmodH20F <- function(times,inputfun,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035) #all parameters values are extracted from the paper
+{
+  ## sugar is the function that contains the ODEs
+  sugar <- function(t,x,paras,input)
+  { with(as.list(c(x,paras)),{
+    # Input variables #must change t from 1 to 1296
+    FW <- input(timestep=t)[[2]] # fruit fresh mass [g]#
+    DW <- input(timestep=t)[[3]] # fruit dry mass [g]
+    DW_dt <- input(timestep=t)[[4]] # fruit dry mass growth rate [g/h]
+    Temp <-input(timestep=t)[[6]] # air temperature [oC]
+    age<- input(timestep=t)[[1]] #at t=1, then at timestep=1 then age=inputfunH(1)[[1]]=144
+    # Calculate the degree days after anthesis [dd/h]
+    if(Temp > 26){
+      dCDD <- (26-C-(Temp -26))/24
+    }else{
+      dCDD <- (Temp - C)/24 
+    }
+    # Calculate the respiration
+    Rm <- qm * DW * Q10^((Temp-20)/10) #[gC /h]
+    Rg <- ifelse(max(0,DW_dt),qg * DW_dt,0) #[gC /h] #ifelse(test, yes, no); if DW_dt<0, Rg=0
+    dCrep <- Rm + Rg 
+    # Calculate the actual fruit water content (%)
+    WC <- (1- DW/FW) *100 
+    # Calculate the conversion coefficients k1 and k3
+    #WCmax <- 100-( 15.71 * exp(-0.00779*t) + 4.66 ) ## for Levovil
+    WCmax <- 100- (23.39 * exp(-0.0211*age)+10.60) ## for Cervil
+    k1 <- ld * exp(ap*(WCmax - WC)) * (DW_dt/DW)^(exp(bt*(WCmax - WC)))
+    k2 <- k2
+    k3 <- k30* exp(gama*(WCmax - WC)) /(1+ exp((CDD - u)/tau))
+    # Calculate the carbon supply from phloem
+    dCsup <- DW_dt * c_DW + dCrep #[gC /h]
+    # Calculate the carbon variation in soluble sugar
+    dCsol <- dCsup + k2 * Csta -(k1+k3) * Csol - dCrep #[gC /h]
+    # Calculate the carbon variation in starch
+    dCsta <- k3 * Csol - k2 * Csta #[gC /h]
+    # Calculate the carbon variation in structural compounds
+    dCsyn <- k1 * Csol #[gC /h]
+    # Calculate the content and concentration of soluble and starch
+    Sugar <- Csol / c_sol # [g sugar]
+    Starch <- Csta / c_sta # [g starch]
+    Struct <- DW - Sugar -Starch # [g structural compounds]
+    SS <- Sugar / DW *100 # [g sugar/100g DW]
+    ST <- Starch / DW *100 # [g starch/100g DW]
+    SSC <- Sugar / FW *100 # [g sugar/100g FW]
+    STC <- Starch / FW *100 # [g starch/100g FW]
+  # Return the results
+    res <- list(c(dCDD,dCsol,dCsta,dCsyn),Sugar,Starch,Struct,SS,ST,SSC,STC,k1,k2,k3, WC)
+  return(res)
+  })
+  }
+  
+  # simulation duration
+  times <- times
+  # parameters
+  parms <- c(c_DW = c_DW, c_sol = c_sol, c_sta = c_sta, C = C ,ld = ld, k2 = k2, k30= k30,u= u, tau= tau, qg = qg, qm = qm, Q10 = Q10, ap = ap, bt = bt, gama = gama)
+  
+  # initialisation
+  DW0 <- inputfun(1)[[3]] #at Age=216d (minimum DAA)
+  Csol0 <- DW0 * 10.6765/100 * c_sol #10.516=SS (g/100gDW) of Cer2007HL at miminum DAA
+  Csta0 <- DW0 * 21.093/100 * c_sta #same logic as above
+  Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+  CDD0 <- 100 #guess 
+  
+  xStart <- c(CDD = CDD0 ,Csol = Csol0, Csta = Csta0, Csyn = Csyn0)
+  names(xStart) <- c("CDD","Csol","Csta","Csyn")
+  # Solve the model
+  library(deSolve)
+  
+  out <- ode(y = xStart, times = times, func = sugar, parms = parms, input = inputfun, method = rkMethod("rk4"))
+  out
+}
+```
+## 2.2: for LL
+```{r}
+sugarmodH5F <- function(times,inputfun,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035) #all parameters values are extracted from the paper
+{
+  ## sugar is the function that contains the ODEs
+  sugar <- function(t,x,paras,input)
+  { with(as.list(c(x,paras)),{
+    # Input variables #must change t from 1 to 1296
+    FW <- input(timestep=t)[[2]] # fruit fresh mass [g]#
+    DW <- input(timestep=t)[[3]] # fruit dry mass [g]
+    DW_dt <- input(timestep=t)[[4]] # fruit dry mass growth rate [g/h]
+    Temp <-input(timestep=t)[[6]] # air temperature [oC]
+    age<- input(timestep=t)[[1]] #at t=1, then at timestep=1 then age=inputfunH(1)[[1]]=144
+    # Calculate the degree days after anthesis [dd/h]
+    if(Temp > 26){
+      dCDD <- (26-C-(Temp -26))/24
+    }else{
+      dCDD <- (Temp - C)/24 
+    }
+    # Calculate the respiration
+    Rm <- qm * DW * Q10^((Temp-20)/10) #[gC /h]
+    Rg <- ifelse(max(0,DW_dt),qg * DW_dt,0) #[gC /h] #ifelse(test, yes, no); if DW_dt<0, Rg=0
+    dCrep <- Rm + Rg 
+    # Calculate the actual fruit water content (%)
+    WC <- (1- DW/FW) *100 
+    # Calculate the conversion coefficients k1 and k3
+    #WCmax <- 100-( 15.71 * exp(-0.00779*t) + 4.66 ) ## for Levovil
+    WCmax <- 100- (23.39 * exp(-0.0211*age)+10.60) ## for Cervil
+    k1 <- ld * exp(ap*(WCmax - WC)) * (DW_dt/DW)^(exp(bt*(WCmax - WC)))
+    k2 <- k2
+    k3 <- k30* exp(gama*(WCmax - WC)) /(1+ exp((CDD - u)/tau))
+    # Calculate the carbon supply from phloem
+    dCsup <- DW_dt * c_DW + dCrep #[gC /h]
+    # Calculate the carbon variation in soluble sugar
+    dCsol <- dCsup + k2 * Csta -(k1+k3) * Csol - dCrep #[gC /h]
+    # Calculate the carbon variation in starch
+    dCsta <- k3 * Csol - k2 * Csta #[gC /h]
+    # Calculate the carbon variation in structural compounds
+    dCsyn <- k1 * Csol #[gC /h]
+    # Calculate the content and concentration of soluble and starch
+    Sugar <- Csol / c_sol # [g sugar]
+    Starch <- Csta / c_sta # [g starch]
+    Struct <- DW - Sugar -Starch # [g structural compounds]
+    SS <- Sugar / DW *100 # [g sugar/100g DW]
+    ST <- Starch / DW *100 # [g starch/100g DW]
+    SSC <- Sugar / FW *100 # [g sugar/100g FW]
+    STC <- Starch / FW *100 # [g starch/100g FW]
+  # Return the results
+    res <- list(c(dCDD,dCsol,dCsta,dCsyn),Sugar,Starch,Struct,SS,ST,SSC,STC,k1,k2,k3, WC)
+  return(res)
+  })
+  }
+  
+  # simulation duration
+  times <- times
+  # parameters
+  parms <- c(c_DW = c_DW, c_sol = c_sol, c_sta = c_sta, C = C ,ld = ld, k2 = k2, k30= k30,u= u, tau= tau, qg = qg, qm = qm, Q10 = Q10, ap = ap, bt = bt, gama = gama)
+  
+  # initialisation
+  DW0 <- inputfun(1)[[3]] #at Age=120d (minimum DAA)
+  Csol0 <- DW0 * 9.4705/100 * c_sol #of Cer2007LL at miminum DAA
+  Csta0 <- DW0 * 23.5525/100 * c_sta #same logic as above
+  Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+  CDD0 <- 100 #guess 
+  
+  xStart <- c(CDD = CDD0 ,Csol = Csol0, Csta = Csta0, Csyn = Csyn0)
+  names(xStart) <- c("CDD","Csol","Csta","Csyn")
+  # Solve the model
+  library(deSolve)
+  
+  out <- ode(y = xStart, times = times, func = sugar, parms = parms, input = inputfun, method = rkMethod("rk4"))
+  out
+}
+```
+
+## 3. sugarmodH_Ad - used with inputCer2007 under HH conditions
+- inputfun = inputfunH_H and inputfunL_H (outputting adjusted FW and DW when under HH condition)
+- modify DW0 (to be reduced for both HL and LL, as it gets the input form the adjusted input_H), 
+- CsolO to be increased for LL and reduced for HL, compared to sugarmodH, according to the paper
+-  No modification of WC as a result for heat treatment
+```{r}
+#sugarmod is the function that solves the set of ODEs
+sugarmodH_Ad <- function(times,inputfun,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035) #all parameters values are extracted from the paper
+{
+  ## sugar is the function that contains the ODEs
+  sugar <- function(t,x,paras,input)
+  { with(as.list(c(x,paras)),{
+    # Input variables #must change t from 1 to 961 to
+    FW <- input(t=times[t])[[2]] # fruit fresh mass [g]#
+    DW <- input(t=times[t])[[3]] # fruit dry mass [g]
+    DW_dt <- input(t=times[t])[[4]] # fruit dry mass growth rate [g/h]
+    Temp <-input(t=times[t])[[6]] # air temperature [oC]
+    age<- input(t=times[t])[[1]]
+    # Calculate the degree days after anthesis [dd/h]
+    if(Temp > 26){
+      dCDD <- (26-C-(Temp -26))/24
+    }else{
+      dCDD <- (Temp - C)/24 
+    }
+    # Calculate the respiration
+    Rm <- qm * DW * Q10^((Temp-20)/10) #[gC /h]
+    Rg <- ifelse(max(0,DW_dt),qg * DW_dt,0) #[gC /h] #ifelse(test, yes, no); if DW_dt<0, Rg=0
+    dCrep <- Rm + Rg 
+    # Calculate the actual fruit water content (%)
+    WC <- (1- DW/FW) *100 
+    # Calculate the conversion coefficients k1 and k3
+    #WCmax <- 100-( 15.71 * exp(-0.00779*t) + 4.66 ) ## for Levovil
+    WCmax <- (100- (23.39 * exp(-0.0211*age)+10.60))
+    # if (input(t=times[1])[[2]]==inputCer2007HL_H[1,"FW_H"]){ ##MODIFICATION in WCmax
+    #   WCmax <- (1-0.099)*(100- (23.39 * exp(-0.0211*age)+10.60)) #for HL
+    # }else{
+    #   WCmax <- (1-0.041)*(100- (23.39 * exp(-0.0211*age)+10.60)) ## for LL 
+    # }
+    k1 <- ld * exp(ap*(WCmax - WC)) * (DW_dt/DW)^(exp(bt*(WCmax - WC)))
+    k2 <- k2
+    k3 <- k30* exp(gama*(WCmax - WC)) /(1+ exp((CDD - u)/tau))
+    # Calculate the carbon supply from phloem
+    dCsup <- DW_dt * c_DW + dCrep #[gC /h]
+    # Calculate the carbon variation in soluble sugar
+    dCsol <- dCsup + k2 * Csta -(k1+k3) * Csol - dCrep #[gC /h]
+    # Calculate the carbon variation in starch
+    dCsta <- k3 * Csol - k2 * Csta #[gC /h]
+    # Calculate the carbon variation in structural compounds
+    dCsyn <- k1 * Csol #[gC /h]
+    # Calculate the content and concentration of soluble and starch
+    Sugar <- Csol / c_sol # [g sugar]
+    Starch <- Csta / c_sta # [g starch]
+    Struct <- DW - Sugar -Starch # [g structural compounds]
+    SS <- Sugar / DW *100 # [g sugar/100g DW]
+    ST <- Starch / DW *100 # [g starch/100g DW]
+    SSC <- Sugar / FW *100 # [g sugar/100g FW]
+    STC <- Starch / FW *100 # [g starch/100g FW]
+  # Return the results
+    res <- list(c(dCDD,dCsol,dCsta,dCsyn),Sugar,Starch,Struct,SS,ST,SSC,STC,k1,k2,k3, WC)
+  return(res)
+  })
+  }
+  # simulation duration
+  times <- times
+  # parameters
+  parms <- c(c_DW = c_DW, c_sol = c_sol, c_sta = c_sta, C = C ,ld = ld, k2 = k2, k30= k30,u= u, tau= tau, qg = qg, qm = qm, Q10 = Q10, ap = ap, bt = bt, gama = gama)
+  
+  # initialisation
+  if (inputfun(t=times[1])[[2]]==inputCer2007HL_H[1,"FW_H"]){
+    DW0 <- inputfun(t=times[1])[[3]] #at Age=216d (minimum DAA)
+    Csol0 <- DW0 * (10.6765/100)*(1-0.08)* c_sol #10.516=SS (g/100gDW) of Cer2007HL at miminum DAA ##MODIFICATION for HL under HH
+    Csta0 <- DW0 * 21.093/100 *c_sta #same logic as above
+    Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+    CDD0 <- 100 #guess 
+  }else{
+    DW0 <- inputfun(t=times[1])[[3]] #at Age=120d (minimum DAA)
+    Csol0 <- DW0 * 9.4705/100*(1+0.02) * c_sol #of Cer2007LL at miminum DAA ##MODIFICATION for LL under HH
+    Csta0 <- DW0 * 23.5525/100 * c_sta #same logic as above
+    Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+    CDD0 <- 100 #guess 
+  }
+  
+  xStart <- c(CDD = CDD0 ,Csol = Csol0, Csta = Csta0, Csyn = Csyn0)
+  names(xStart) <- c("CDD","Csol","Csta","Csyn")
+  # Solve the model
+  library(deSolve)
+  
+  out <- ode(y = xStart, times = times, func = sugar, parms = parms, input = inputfun, method = rkMethod("rk4"))
+  out
+}
+```
+
+## 4. sugarmodH_Ad_W
+```{r}
+#sugarmod is the function that solves the set of ODEs
+sugarmodH_Ad_W <- function(times,inputfun,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035) #all parameters values are extracted from the paper
+{
+  ## sugar is the function that contains the ODEs
+  sugar <- function(t,x,paras,input)
+  { with(as.list(c(x,paras)),{
+    # Input variables #must change t from 1 to 961 to
+    FW <- input(t=times[t])[[2]] # fruit fresh mass [g]#
+    DW <- input(t=times[t])[[3]] # fruit dry mass [g]
+    DW_dt <- input(t=times[t])[[4]] # fruit dry mass growth rate [g/h]
+    Temp <-input(t=times[t])[[6]] # air temperature [oC]
+    age<- input(t=times[t])[[1]]
+    # Calculate the degree days after anthesis [dd/h]
+    if(Temp > 26){
+      dCDD <- (26-C-(Temp -26))/24
+    }else{
+      dCDD <- (Temp - C)/24 
+    }
+    # Calculate the respiration
+    Rm <- qm * DW * Q10^((Temp-20)/10) #[gC /h]
+    Rg <- ifelse(max(0,DW_dt),qg * DW_dt,0) #[gC /h] #ifelse(test, yes, no); if DW_dt<0, Rg=0
+    dCrep <- Rm + Rg 
+    # Calculate the actual fruit water content (%)
+    WC <- (1- DW/FW) *100 
+    # Calculate the conversion coefficients k1 and k3
+    #WCmax <- 100-( 15.71 * exp(-0.00779*age) + 4.66 ) ## for Levovil
+    #WCmax <- (100- (23.39 * exp(-0.0211*age)+10.60))
+    #see if I can use WCmax - plot thid one and overlay on WC case 2
+    if (input(t=times[1])[[2]]==inputCer2007HL_H[1,"FW_H"]){ ##MODIFICATION in WCmax
+      WCmax <- (1-0.099)*(100- (23.39 * exp(-0.0211*age)+10.60)) #for HL
+    }else{
+      WCmax <- (1-0.041)*(100- (23.39 * exp(-0.0211*age)+10.60)) ## for LL
+    }
+    k1 <- ld * exp(ap*(WCmax - WC)) * (DW_dt/DW)^(exp(bt*(WCmax - WC)))
+    k2 <- k2
+    k3 <- k30* exp(gama*(WCmax - WC)) /(1+ exp((CDD - u)/tau))
+    # Calculate the carbon supply from phloem
+    dCsup <- DW_dt * c_DW + dCrep #[gC /h]
+    # Calculate the carbon variation in soluble sugar
+    dCsol <- dCsup + k2 * Csta -(k1+k3) * Csol - dCrep #[gC /h]
+    # Calculate the carbon variation in starch
+    dCsta <- k3 * Csol - k2 * Csta #[gC /h]
+    # Calculate the carbon variation in structural compounds
+    dCsyn <- k1 * Csol #[gC /h]
+    # Calculate the content and concentration of soluble and starch
+    Sugar <- Csol / c_sol # [g sugar]
+    Starch <- Csta / c_sta # [g starch]
+    Struct <- DW - Sugar -Starch # [g structural compounds]
+    SS <- Sugar / DW *100 # [g sugar/100g DW]
+    ST <- Starch / DW *100 # [g starch/100g DW]
+    SSC <- Sugar / FW *100 # [g sugar/100g FW]
+    STC <- Starch / FW *100 # [g starch/100g FW]
+  # Return the results
+    res <- list(c(dCDD,dCsol,dCsta,dCsyn),Sugar,Starch,Struct,SS,ST,SSC,STC,k1,k2,k3, WC)
+  return(res)
+  })
+  }
+  # simulation duration
+  times <- times
+  # parameters
+  parms <- c(c_DW = c_DW, c_sol = c_sol, c_sta = c_sta, C = C ,ld = ld, k2 = k2, k30= k30,u= u, tau= tau, qg = qg, qm = qm, Q10 = Q10, ap = ap, bt = bt, gama = gama)
+  
+  # initialisation
+  if (inputfun(t=times[1])[[2]]==inputCer2007HL_H[1,"FW_H"]){
+    DW0 <- inputfun(t=times[1])[[3]] #at Age=216d (minimum DAA)
+    Csol0 <- DW0 * 10.6765/100* c_sol #10.516=SS (g/100gDW) of Cer2007HL at miminum DAA ##MODIFICATION for HL under HH
+    Csta0 <- DW0 * 21.093/100 *c_sta #same logic as above
+    Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+    CDD0 <- 100 #guess 
+  }else{
+    DW0 <- inputfun(t=times[1])[[3]] #at Age=120d (minimum DAA)
+    Csol0 <- DW0 * 9.4705/100*(1+0.02) * c_sol #of Cer2007LL at miminum DAA ##MODIFICATION for LL under HH
+    Csta0 <- DW0 * 23.5525/100 * c_sta #same logic as above
+    Csyn0 <- DW0 * c_DW - Csol0 - Csta0
+    CDD0 <- 100 #guess 
+  }
+  
+  xStart <- c(CDD = CDD0 ,Csol = Csol0, Csta = Csta0, Csyn = Csyn0)
+  names(xStart) <- c("CDD","Csol","Csta","Csyn")
+  # Solve the model
+  library(deSolve)
+  
+  out <- ode(y = xStart, times = times, func = sugar, parms = parms, input = inputfun, method = rkMethod("rk4"))
+  out
+}
+```
+
+## 5. sugarmodW 
+4. sugarmodW - used with inputCer2014_WD and WW under CC conditions
+- inputfun = inputfunWD and inputfunWW for inputCer2014WD or inputCer2014WW, respectively
+- modify DW0, Csol0, Csta0, Csyn0 to be of non-adjusted FW and DW from inputCer2014WD and inputCer2014WW
+- No modification of WC as a result for heat treatment
+
+5. sugarmodW_H - used with inputCer2014 under HH conditions
+- inputfun = inputfunWD_H and inputfunWW_H (outputting adjusted FW and DW when under HH condition)
+- modify DW0 (to be reduced for both WD and WW, as it gets the input form the adjusted )

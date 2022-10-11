@@ -1,0 +1,764 @@
+---
+title: "Output-HLvsLL 02"
+author: "Pannaree"
+date: "31/08/2022"
+output: html_document
+---
+## Part 0: Introduction
+
+I am trying to test Hypothesis 01: 
+
+When tomatoes (cv Cervil) are in grown under a higher temperature after anthesis, the soluble sugars will increase for the HL but reduce for the LL.
+If this is the case, it will replicate the conclusion by Gautier et al. (2005)
+
+
+Note one difference is that HL = 14, LL = 7 fruits per truss in Gautier et al. (2005), but HL and LL in our input data is 20 and 5 fruits per truss.
+
+
+## Part 1: Import raw data
+Choose the data. We used 2007 Cervil HL (20 fruits per truss) and 2007 Cervil LL (5 fruits per truss). 
+
+```{r, include=FALSE}
+library(data.table)
+library(nlme)
+library(tidyverse)
+```
+
+```{r}
+Cer2007<-read.csv("/Users/panareeboonyuen/Desktop/intern/CodingforProject/RawData2007HL-LL.csv", header = TRUE)
+colnames(Cer2007)<-c("Treatment","Genotype","DAA_d","FW", "DW", "ST", "SS", "STC", "SSC", "WC")
+Cer2007$Age_h <- Cer2007$DAA_d*24 #I change the unit of DAA to hour
+Cer2007HL<-Cer2007[Cer2007$Treatment == "2007_HL",]
+Cer2007LL<-Cer2007[Cer2007$Treatment == "2007_LL",]
+#I think I need to avg over data points collected at the same DAA
+# Cer2007sum<- Cer2007 %>%
+#   group_by(Age_h)  %>%
+#   summarise(DW=mean(DW))
+# # Cer2003<-Cer2003sum
+```
+
+## Part 2.1: Forming `inputfunH`, `inputfunL`
+
+Assumption: no change in FW or DW under HH compared to CC condition.
+Here we will form the function `inputfunH/L`, and make it return the list of FW (g), DW (g), dDW/dt (g/h), Temp (degreeC) at each time point (which expressed in hour) for HL or LL data set, respectively.
+Remember that FW (g), DW (g) here have not been adjusted. 
+
+- We will use these two functions in the Case 1, where we do not account for a potential influence of high temperature on FW and DW.
+- However, these two functions will only be used for CC treatment for the Case 2, as we are trying to take into account the reduction in FW and DW due to the high temperature. The percentages of each data set (FW or DW, of HL or LL) are calculated based on the paper Gautier 2005.
+
+2.1.1: Fitting the DW and Age_h with Gompertz function
+For HL (no change in FW or DW)
+```{r}
+#nlc <- nls.control(maxiter = 1500, minFactor = 1/4096)
+fittingCer2007HL <- nls(DW ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007HL)
+a<-summary(fittingCer2007HL)[["parameters"]]["Asym","Estimate"]
+b<-summary(fittingCer2007HL)[["parameters"]]["b2","Estimate"]
+c<-summary(fittingCer2007HL)[["parameters"]]["b3","Estimate"]
+plot(Cer2007HL$Age_h,Cer2007HL$DW, pch=4, cex=0.5, ylab = "DW(g)", xlab = "Age (h)", main = "Real data and fitted curve: Cer2007HL,DW")
+x<-Cer2007HL$Age_h
+points(x,a*(exp(-b*(c^x))), col = "red", cex = 0.5)
+Cer2007HL["dDW"]<-(Cer2007HL["DW"]*log(Cer2007HL["DW"]/a)*log(c))#a,b,c are from the fitted data in hour
+# plot(Cer2007HL$Age_h,Cer2007HL$dDW,ylab = "dDW/dt(g/h)=DW* log(DW/a) * log(c)", xlab = "Age (h)", main = "Derivative of fitted Gompertz: Cer2007HL ")
+
+fittingCer2007HL_F <- nls(FW ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007HL)
+a_F<-summary(fittingCer2007HL_F)[["parameters"]]["Asym","Estimate"]
+b_F<-summary(fittingCer2007HL_F)[["parameters"]]["b2","Estimate"]
+c_F<-summary(fittingCer2007HL_F)[["parameters"]]["b3","Estimate"]
+plot(Cer2007HL$Age_h,Cer2007HL$FW, pch=4, cex=0.5, ylab = "FW(g)", xlab = "Age (h)", main = "Real data and fitted curve: Cer2007HL, FW")
+points(x,a_F*(exp(-b_F*(c_F^x))), col = "red", cex = 0.5)
+# plot(Cer2007HL$Age_h,Cer2007HL$dDW,ylab = "dDW/dt(g/h)=DW* log(DW/a) * log(c)", xlab = "Age (h)", main = "Derivative of fitted Gompertz: Cer2007HL ")
+```
+
+For LL (no change in FW or DW)
+```{r}
+fittingCer2007LL <- nls(DW ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007LL)
+al<-summary(fittingCer2007LL)[["parameters"]]["Asym","Estimate"]
+bl<-summary(fittingCer2007LL)[["parameters"]]["b2","Estimate"]
+cl<-summary(fittingCer2007LL)[["parameters"]]["b3","Estimate"]
+plot(Cer2007LL$Age_h,Cer2007LL$DW, pch=4, cex=0.5, ylab = "DW(g)", xlab = "Age (h)", main = "Real data and fitted curve: Cer2007LL, DW")
+xl<-Cer2007LL$Age_h
+points(xl,al*(exp(-bl*(cl^xl))), col = "red", cex = 0.5)
+Cer2007LL["dDW"]<-(Cer2007LL["DW"]*log(Cer2007LL["DW"]/al)*log(cl))#a,b,c are from the fitted data in hour
+# plot(Cer2007LL$Age_h,Cer2007LL$dDW,ylab = "dDW/dt(g/h)=DW* log(DW/a) * log(c)", xlab = "Age (h)", main = "Derivative of fitted Gompertz: Cer2007LL ")
+fittingCer2007LL_F <- nls(FW ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007LL)
+al_F<-summary(fittingCer2007LL_F)[["parameters"]]["Asym","Estimate"]
+bl_F<-summary(fittingCer2007LL_F)[["parameters"]]["b2","Estimate"]
+cl_F<-summary(fittingCer2007LL_F)[["parameters"]]["b3","Estimate"]
+plot(Cer2007LL$Age_h,Cer2007LL$FW, pch=4, cex=0.5, ylab = "FW(g)", xlab = "Age (h)", main = "Real data and fitted curve: Cer2007LL, FW")
+points(xl,al_F*(exp(-bl_F*(cl_F^xl))), col = "red", cex = 0.5)
+```
+
+As a result, we now have a function of FW, DW, and dDW/dt in the form of t (hour) for data from Cer2007HL and LL. 
+
+2.1.2: Form an input table called "inputCer2007HL" for HL and "inputCer2007LL" for LL
+
+We will form the data set where t is in hour from 6DAA(=144hr) to 60DAA(=1440hr), and t increased by 1 hour. 
+This table will be called in the function `inputfunH` and `inputfunL` 
+
+```{r}
+t<-seq(144,1440-1,by=1)
+DAA_d<-t/24
+temp<-rep(17.5,length(t))
+
+DW<-a*(exp(-b*(c^t)))
+FW<-a_F*(exp(-b_F*(c_F^t)))
+dDW<-DW*log(DW/a)*log(c)
+
+DWl<-al*(exp(-bl*(cl^t)))
+FWl<-al_F*(exp(-bl_F*(cl_F^t)))
+dDWl<-DWl*log(DWl/al)*log(cl)
+
+inputCer2007HL<- as.data.frame(cbind(t,FW,DW,dDW,DAA_d,temp))
+inputCer2007LL<- as.data.frame(cbind(t,FWl,DWl,dDWl,DAA_d,temp))
+
+write.csv(inputCer2007HL, file = "inputCer2007HL.csv")
+write.csv(inputCer2007LL, file = "inputCer2007LL.csv")
+no_hr<-dim(inputCer2007HL)[1]
+```
+
+
+2.1.3: Source code for `inputfunH`, `inputfunL`
+```{r}
+inputfunH<-function(timestep){ #t is the timestep
+  if(timestep>no_hr){
+    print("exceed the total number of time steps exisiting with this experimental data set")
+    print(paste("there is only ",no_hr," steps, so your t must not exceed this number"))
+  }else{
+    Age_h<-inputCer2007HL[[1]][timestep]
+    FW<-inputCer2007HL[[2]][timestep]
+    DW<-inputCer2007HL[[3]][timestep]
+    DW_dt<-inputCer2007HL[[4]][timestep]
+    DAA<-inputCer2007HL[[5]][timestep]
+    temp<-inputCer2007HL[[6]][timestep]
+    #print(paste("you input t =", t, "which mean you want to know all the variables when the age of the fruit are", Age_h, "hours after anthesis" ))
+    input<-list(Age_h,FW,DW,DW_dt,DAA,temp)
+    return(input)
+  }
+}
+#we will test the function
+# inputfunH(1)
+# inputfunH(1400)
+
+inputfunL<-function(timestep){
+  if(timestep>no_hr){
+    print("exceed the total number of time steps exisiting with this experimental data set")
+    print(paste("there is only ",no_hr," steps, so your t must not exceed this number"))
+  }else{
+    Age_h<-inputCer2007LL[[1]][timestep]
+    FW<-inputCer2007LL[[2]][timestep]
+    DW<-inputCer2007LL[[3]][timestep]
+    DW_dt<-inputCer2007LL[[4]][timestep]
+    DAA<-inputCer2007LL[[5]][timestep]
+    temp<-inputCer2007LL[[6]][timestep]
+    #print(paste("you input t =", t, "which mean you want to know all the variables when the age of the fruit are", Age_h, "hours after anthesis" ))
+    input<-list(Age_h,FW,DW,DW_dt,DAA,temp)
+    return(input)
+  }
+}
+#we will test the function
+# inputfunL(1)
+# inputfunL(1400)
+
+```
+
+## Part 2.2: Forming `inputfunH_H`, `inputfunL_H`
+
+As introduced above, under HH treatment, there is a significant decrease (p<0.01) in FW and DW for both HL and LL data sets, according to Gautier 2005. Therefore, we create two other funtions that will give out the adjusted FW and DW, and will use in HH condition.
+
+But in order to do so, we will need to adjust the FW and DW as below and repeat steps in Part 1 (1.2-1.3).
+
+The raw data of FW and DW will be adjusted to: 
+- FW (g) reduced by 4.1% for LL and 10.2% for HL - in the heat
+- DW (g) reduced by 3.9% for LL and 13.2% for HL - in the heat
+
+2.2.1 : Then fit to Gompertz function
+
+For HL (adjusted FW-10.2% and DW-13.2%)
+```{r}
+#nlc <- nls.control(maxiter = 1500, minFactor = 1/4096)
+fittingCer2007HL_H <- nls(DW*(1-0.132) ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007HL)
+a_H<-summary(fittingCer2007HL_H)[["parameters"]]["Asym","Estimate"]
+b_H<-summary(fittingCer2007HL_H)[["parameters"]]["b2","Estimate"]
+c_H<-summary(fittingCer2007HL_H)[["parameters"]]["b3","Estimate"]
+
+fittingCer2007HL_F_H <- nls(FW*(1-0.102) ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007HL)
+a_F_H<-summary(fittingCer2007HL_F_H)[["parameters"]]["Asym","Estimate"]
+b_F_H<-summary(fittingCer2007HL_F_H)[["parameters"]]["b2","Estimate"]
+c_F_H<-summary(fittingCer2007HL_F_H)[["parameters"]]["b3","Estimate"]
+# (a-a_H)/a *100 =13.2
+# (b-b_H)/b *100 = -1.344281e-10
+# (c-c_H)/c * 100 = 5.342187e-13
+# (a_F-a_F_H)/a_F *100 = 10.2
+```
+
+For LL (adjusted FW-4.1% and DW-3.9%)
+```{r}
+#nlc <- nls.control(maxiter = 1500, minFactor = 1/4096)
+fittingCer2007LL_H <- nls(DW*(1-0.039) ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007LL)
+al_H<-summary(fittingCer2007LL_H)[["parameters"]]["Asym","Estimate"]
+bl_H<-summary(fittingCer2007LL_H)[["parameters"]]["b2","Estimate"]
+cl_H<-summary(fittingCer2007LL_H)[["parameters"]]["b3","Estimate"]
+fittingCer2007LL_F_H <- nls(FW*(1-0.041) ~ SSgompertz(Age_h, Asym, b2, b3), data=Cer2007LL)
+al_F_H<-summary(fittingCer2007LL_F_H)[["parameters"]]["Asym","Estimate"]
+bl_F_H<-summary(fittingCer2007LL_F_H)[["parameters"]]["b2","Estimate"]
+cl_F_H<-summary(fittingCer2007LL_F_H)[["parameters"]]["b3","Estimate"]
+```
+
+2.2.2 :
+Forming input tables (inputCer2007HL_H, inputCer2007LL_H) to be called in the functions
+```{r}
+t<-seq(144,1440-1,by=1) #144 is the first hour of day6 = 00.00-01.00 and 1439 is the last hour of day60
+DAA_d<-t/24
+temp<-rep(17.5,length(t))
+
+DW_H<-a_H*(exp(-b_H*(c_H^t)))
+FW_H<-a_F_H*(exp(-b_F_H*(c_F_H^t)))
+dDW_H<-DW_H*log(DW_H/a_H)*log(c_H)
+
+DWl_H<-al_H*(exp(-bl_H*(cl_H^t)))
+FWl_H<-al_F_H*(exp(-bl_F_H*(cl_F_H^t)))
+dDWl_H<-DWl_H*log(DWl_H/al_H)*log(cl_H)
+
+inputCer2007HL_H<- as.data.frame(cbind(t,FW_H,DW_H,dDW_H,DAA_d,temp))
+inputCer2007LL_H<- as.data.frame(cbind(t,FWl_H,DWl_H,dDWl_H,DAA_d,temp))
+
+# plot(inputCer2007HL_H, cex=0.1)
+# plot(inputCer2007LL_H, cex=0.1)
+write.csv(inputCer2007HL_H, file = "inputCer2007HL_H.csv")
+write.csv(inputCer2007LL_H, file = "inputCer2007LL_H.csv")
+
+```
+
+2.2.3.`inputfunH_H`, `inputfunL_H`, 
+as opposed to `inputfunH`, `inputfunL`, these two function will be used with high temperature and will give out adjusted FW and DW (with different modifying factors for HL or LL)
+```{r}
+inputfunH_H<-function(timestep){
+  if(timestep>no_hr){
+    print("exceed the total number of time steps exisiting with this experimental data set")
+    print(paste("there is only ",no_hr," steps, so your t must not exceed this number"))
+  }else{
+    Age_h<-inputCer2007HL_H[[1]][timestep]
+    FW<-inputCer2007HL_H[[2]][timestep]
+    DW<-inputCer2007HL_H[[3]][timestep]
+    DW_dt<-inputCer2007HL_H[[4]][timestep]
+    DAA<-inputCer2007HL_H[[5]][timestep]
+    temp<-inputCer2007HL_H[[6]][timestep]
+    #print(paste("you input t =", t, "which mean you want to know all the variables when the age of the fruit are", Age_h, "hours after anthesis" ))
+    input<-list(Age_h,FW,DW,DW_dt,DAA,temp)
+    return(input)
+  }
+}
+#we will test the function
+# inputfunH(1)
+# inputfunH(1400)
+
+inputfunL_H<-function(timestep){
+  if(timestep>no_hr){
+    print("exceed the total number of time steps exisiting with this experimental data set")
+    print(paste("there is only ",no_hr," steps, so your t must not exceed this number"))
+  }else{
+    Age_h<-inputCer2007LL_H[[1]][timestep]
+    FW<-inputCer2007LL_H[[2]][timestep]
+    DW<-inputCer2007LL_H[[3]][timestep]
+    DW_dt<-inputCer2007LL_H[[4]][timestep]
+    DAA<-inputCer2007LL_H[[5]][timestep]
+    temp<-inputCer2007LL_H[[6]][timestep]
+    #print(paste("you input t =", t, "which mean you want to know all the variables when the age of the fruit are", Age_h, "hours after anthesis" ))
+    input<-list(Age_h,FW,DW,DW_dt,DAA,temp)
+    return(input)
+  }
+}
+```
+
+
+Time to run the model at default condition (temp = constant 17.5 day, night)
+This can be skipped as it is only for testing if the two input data and two input functions are okay  
+```{r}
+times<-seq(1,1177,by=1)
+OutputModelH<-sugarmod(times,inputfun=inputfunH,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035)
+OutputModelH.df<-as.data.frame(OutputModelH)
+colnames(OutputModelH.df)<-c("timestep","CDD","Csol","Csta","Csyn","Sugar","Starch","Struct","SS","ST","SSC","STC","k1","k2","k3")
+OutputModelH.df["age_h"]<-215+OutputModelH.df$timestep
+OutputModelH.df["DAA_d"]<-OutputModelH.df["age_h"]/24
+tail(OutputModelH.df)
+#summary(OutputModel.df)
+
+OutputModelL<-sugarmod(times,inputfun=inputfunL,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035)
+OutputModelL.df<-as.data.frame(OutputModelL)
+colnames(OutputModelL.df)<-c("timestep","CDD","Csol","Csta","Csyn","Sugar","Starch","Struct","SS","ST","SSC","STC","k1","k2","k3")
+OutputModelL.df["age_h"]<-215+OutputModelL.df$timestep
+OutputModelL.df["DAA_d"]<-OutputModelL.df["age_h"]/24
+tail(OutputModelL.df)
+#summary(OutputModel.df)
+```
+
+## Result part 1: The input
+```{r}
+#test by plotting
+#non-adjusted only
+ggplot()+
+  geom_line(data=inputCer2007HL, mapping= aes(x=DAA_d, y=DW), colour="red")+
+  #geom_line(data=inputCer2007HL_H, mapping= aes(x=DAA_d, y=DW_H), colour="red", linetype = 2)+
+  geom_line(data=inputCer2007LL, mapping= aes(x=DAA_d, y=DWl), colour="blue")+
+  #geom_line(data=inputCer2007LL_H, mapping= aes(x=DAA_d, y=DWl_H), colour="blue",linetype = 2)+
+  geom_point(data=Cer2007, mapping= aes(x=DAA_d, y=DW, colour = Treatment), size = 0.5)+
+  labs(x="Fruit age (days)", y="Dry weight (g/fruit)", title = "Dry weight raw data (points) and Gompertz fitted lines (bold line)")+
+  scale_color_manual(values=c("red", "blue"))
+ggplot()+
+  geom_line(data=inputCer2007HL, mapping= aes(x=DAA_d, y=FW), colour="purple")+
+  #geom_line(data=inputCer2007HL_H, mapping= aes(x=DAA_d, y=FW_H), colour="purple", linetype = 2)+
+  geom_line(data=inputCer2007LL, mapping= aes(x=DAA_d, y=FWl), colour="dark green")+
+  #geom_line(data=inputCer2007LL_H, mapping= aes(x=DAA_d, y=FWl_H), colour="dark green",linetype = 2)+
+  geom_point(data=Cer2007, mapping= aes(x=DAA_d, y=FW, colour = Treatment), size = 0.5)+
+  labs(x="Fruit age (days)", y="Fresh weight (g/fruit)", title = "Fresh weight raw data (points) and Gompertz fitted lines (bold line)")+
+  scale_color_manual(values=c("purple", "dark green"))
+
+
+#only lines
+ggplot()+
+  geom_line(data=inputCer2007HL, mapping= aes(x=DAA_d, y=DW), colour="red")+
+  geom_line(data=inputCer2007HL_H, mapping= aes(x=DAA_d, y=DW_H), colour="red", linetype = 2)+
+  geom_line(data=inputCer2007LL, mapping= aes(x=DAA_d, y=DWl), colour="blue")+
+  geom_line(data=inputCer2007LL_H, mapping= aes(x=DAA_d, y=DWl_H), colour="blue",linetype = 2)+
+  #geom_point(data=Cer2007, mapping= aes(x=DAA_d, y=DW, colour = Treatment), size = 0.5)+
+  labs(x="Fruit age (days)", y="Dry weight (g/fruit)", title = "Comparison between fitted lines from non-adjusted and adjusted dry weight data", subtitle = "Dash line is the heat-adjusted version of corresponding bold line")+
+  scale_color_manual(values=c("red", "blue"))
+
+ggplot()+
+  geom_line(data=inputCer2007HL, mapping= aes(x=DAA_d, y=FW), colour="purple")+
+  geom_line(data=inputCer2007HL_H, mapping= aes(x=DAA_d, y=FW_H), colour="purple", linetype = 2)+
+  geom_line(data=inputCer2007LL, mapping= aes(x=DAA_d, y=FWl), colour="dark green")+
+  geom_line(data=inputCer2007LL_H, mapping= aes(x=DAA_d, y=FWl_H), colour="dark green",linetype = 2)+
+  #geom_point(data=Cer2007, mapping= aes(x=DAA_d, y=FW, colour = Treatment), size = 0.5)+
+  labs(x="Fruit age (days)", y="Fresh weight (g/fruit)", title = "Comparison between fitted lines from non-adjusted and adjusted fresh weight data", subtitle = "Dash line is the heat-adjusted version of corresponding bold line")+
+  scale_color_manual(values=c("purple", "dark green"))
+
+#DW per FW - just to check if our data from 2020 seems to have the same profile with the paper from 2005
+ggplot()+
+  geom_smooth(data=Cer2007HL, mapping= aes(x=DAA_d, y=DW/FW), colour="purple")+
+  geom_smooth(data=Cer2007LL, mapping= aes(x=DAA_d, y=DW/FW), colour="orange")
+  
+WCCer2007HL<-(1- (inputCer2007HL["DW"]/inputCer2007HL["FW"]))*100
+WCCer2007LL<-(1- (inputCer2007LL["DWl"]/inputCer2007LL["FWl"]))*100
+WCCer2007HL_H<-(1- (inputCer2007HL_H["DW_H"]/inputCer2007HL_H["FW_H"]))*100
+WCCer2007LL_H<-(1- (inputCer2007LL_H["DWl_H"]/inputCer2007LL_H["FWl_H"]))*100
+WCall<-cbind(times+143,WCCer2007HL, WCCer2007LL, WCCer2007HL_H, WCCer2007LL_H)
+colnames(WCall)<-c("hr", "HL","LL", "HL_H", "LL_H")
+
+ggplot(data=WCall)+
+  geom_line(mapping = aes(x=hr,y=HL), col = "red" )+
+  geom_line(mapping = aes(x=hr,y=LL), col = "blue")+
+  geom_line(mapping = aes(x=hr,y=HL_H), col = "red", linetype = 2)+
+  geom_line(mapping = aes(x=hr,y=LL_H), col = "blue", linetype = 2)+
+  labs(y="Water content")
+#PASS
+```
+
+
+
+## Part 3.1: Create two temperature pattern (HH and CC)
+
+
+Real running in a loop, collected output in a vector "OutputModelArrayHL"
+According to the paper Gautier et al. (2005), the temperature only varies btw 16.6-20.3 during the night and 17.4-24.4 during the day. 
+
+1: 16.6N/17.4D = C
+2: 20.3N/24.4D = H
+3: Early C + Late H
+4: Early H + Late C
+
+Create pattern 1 to 4, collected as a member of a vector "onedaytemparrayHL"
+```{r}
+# numberofdayHL<-max(inputCer2007HL$DAA_d)-min(inputCer2007HL$DAA_d)+1 #60-6+1=55days
+# earlyperiodHL<-round(numberofdayHL/2) #
+# lateperiodHL<-numberofdayHL-earlyperiodHL
+# onedaytemparrayHL<-vector(mode='list',length=4)
+# onedaytemparrayHL[[1]]<-c(rep(c(rep(17.4,12), rep(16.6,12)),numberofdayHL),17.4)
+# onedaytemparrayHL[[2]]<-c(rep(c(rep(24.4,12), rep(20.3,12)),numberofdayHL),24.4)
+# onedaytemparrayHL[[3]]<-c(rep(c(rep(17.4,12), rep(16.6,12)),earlyperiodHL),rep(c(rep(24.4,12), rep(20.3,12)),lateperiodHL),26)
+# onedaytemparrayHL[[4]]<-c(rep(c(rep(24.4,12), rep(20.3,12)),earlyperiodHL),rep(c(rep(17.4,12), rep(16.6,12)),lateperiodHL),17.4)
+# onedaytemparrayLL<-onedaytemparrayHL
+
+
+no_hr<-dim(inputCer2007HL)[1]
+patternCC<-rep(c(rep(17.4,12), rep(16.6,12)),no_hr/24)
+patternHH<-rep(c(rep(24.4,12), rep(20.3,12)),no_hr/24)
+CCHH<-vector(mode='list',length=2)
+CCHH[[1]]<-patternCC
+CCHH[[2]]<-patternHH
+```
+
+## Part 3.2: [Case 1] Varying temperature and run the model, assuming no change in FW and DW**
+Meaning we only use inputfunH and inputfunL and sugarmodH for both CC, HH, CH, and HC
+Running models in 2 different temp pattern for case 1
+```{r}
+times<-seq(1,1296)
+#for LL under HH - use inputfunH and sugarmodH
+inputCer2007HL["temp"]<-CCHH[[1]]#CC
+OutputModelHL_C<-as.data.frame(sugarmodH20F(times,inputfun=inputfunH,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))#inputfunH gaves non adjusted FW and DW
+
+#for LL under CC - use inputfunL and sugarmodH
+inputCer2007LL["temp"]<-CCHH[[1]]#CC
+OutputModelLL_C<-as.data.frame(sugarmodH5F(times,inputfun=inputfunL,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))
+plot(OutputModelHL_C$time, OutputModelHL_C$`15`)
+points(OutputModelLL_C$time, OutputModelHL_C$`15`, col=2)
+
+#for HL under HH - use inputfunH and sugarmodH
+inputCer2007HL["temp"]<-CCHH[[2]]#HH
+OutputModelHL_H<-as.data.frame(sugarmodH20F(times,inputfun=inputfunH,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))
+
+#for LL under HH - use inputfunL and sugarmodH
+inputCer2007LL["temp"]<-CCHH[[2]]#HH
+OutputModelLL_H<-as.data.frame(sugarmodH5F(times,inputfun=inputfunL,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))
+
+OutputModelArrayHL_N<-vector(mode='list',length=4)
+OutputModelArrayHL_N[[1]]<-OutputModelHL_C
+OutputModelArrayHL_N[[2]]<-OutputModelHL_H
+OutputModelArrayHL_N[[3]]<-OutputModelLL_C
+OutputModelArrayHL_N[[4]]<-OutputModelLL_H
+
+for (i in 1:4){
+  colnames(OutputModelArrayHL_N[[i]])<-c("timestep","CDD","Csol","Csta","Csyn","Sugar","Starch","Struct","SS","ST","SSC","STC","k1","k2","k3", "WC")
+  OutputModelArrayHL_N[[i]]["age_h"]<-143+OutputModelArrayHL_N[[i]]$timestep
+  OutputModelArrayHL_N[[i]]["DAA_d"]<-OutputModelArrayHL_N[[i]]["age_h"]/24
+}
+
+plot(OutputModelArrayHL_N[[1]]$DAA_d,OutputModelArrayHL_N[[1]]$WC, col="grey",cex=0.1)
+for (i in 2:4){
+  lines(OutputModelArrayHL_N[[i]]$DAA_d,OutputModelArrayHL_N[[i]]$WC, col=i, lty=i)
+}
+
+```
+
+## Part 3.3: [Case 2] Varying temperature and run the model, assuming a CHANGE in FW and DW**
+Run a model with adjusted FW and DW at two different patterns, using function `inputfunH_H` or `inputfunL_H` as they will call adjusted FW and DW.
+Overall, we will only do the pattern CC or HH to reduce the coding complexity.
+sugarmodH_Ad adds the modification of WC as well
+```{r}
+#times<-seq(1,1296)
+# #for HL under CC - use inputfunH and sugarmodH
+# inputCer2007HL["temp"]<-CCHH[[1]]#CC
+# OutputModelHL_C<-as.data.frame(sugarmodH(times,inputfun=inputfunH,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))#inputfunH gaves non adjusted FW and DW
+# 
+# #for LL under CC - use inputfunL and sugarmodH
+# inputCer2007LL["temp"]<-CCHH[[1]]#CC
+# OutputModelLL_C<-as.data.frame(sugarmodH(times,inputfun=inputfunL,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))
+
+#for HL under HH - use inputfunH_H and sugarmodH_Ad
+inputCer2007HL_H["temp"]<-CCHH[[2]]#HH
+OutputModelHL_H_Ad<-as.data.frame(sugarmodH_Ad(times,inputfun=inputfunH_H,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))
+
+#for LL under HH - use inputfunL_H and sugarmodH_Ad
+inputCer2007LL_H["temp"]<-CCHH[[2]]#HH
+OutputModelLL_H_Ad<-as.data.frame(sugarmodH_Ad(times,inputfun=inputfunL_H,c_DW = 0.44, c_sol = 0.4, c_sta = 0.444, SS0 , ST0 ,ld = 4.324 ,k2 = 0.461 , k30= 1.018, u= 478.64, tau= 53.53, qg = 0.092, qm = 0.004, Q10 = 1.4,CDD0, C =5.7, ap = 1.620, bt = 0.187, gama = 0.035))
+
+OutputModelArrayHLcorrected<-vector(mode='list',length=4)
+OutputModelArrayHLcorrected[[1]]<-OutputModelHL_C
+OutputModelArrayHLcorrected[[2]]<-OutputModelHL_H_Ad
+OutputModelArrayHLcorrected[[3]]<-OutputModelLL_C
+OutputModelArrayHLcorrected[[4]]<-OutputModelLL_H_Ad
+
+for (i in 1:4){
+  colnames(OutputModelArrayHLcorrected[[i]])<-c("timestep","CDD","Csol","Csta","Csyn","Sugar","Starch","Struct","SS","ST","SSC","STC","k1","k2","k3", "WC")
+  OutputModelArrayHLcorrected[[i]]["age_h"]<-143+OutputModelArrayHLcorrected[[i]]$timestep
+  OutputModelArrayHLcorrected[[i]]["DAA_d"]<-OutputModelArrayHLcorrected[[i]]["age_h"]/24
+  }
+```
+## Part 3.4: save them as "OutputModelArrayHLLLnonadjust.csv" and "OutputModelArrayHLLLad1.csv"
+```{r}
+OutputModel_N_df<-rbind(OutputModelArrayHL_N[[1]],OutputModelArrayHL_N[[2]],OutputModelArrayHL_N[[3]],OutputModelArrayHL_N[[4]])
+hr_each<-dim(OutputModel_N_df)[1]/4
+OutputModel_N_df["Temp"]<-c(rep("CC",hr_each),rep("HH",hr_each),rep("CC",hr_each),rep("HH",hr_each))
+OutputModel_N_df["Load"]<-c(rep("HL",hr_each*2),rep("LL",hr_each*2))
+write.csv(OutputModel_N_df, file = "OutputModelArrayHLLLnonadjust.csv")
+
+OutputModelArrayHLcorrected_df<-rbind(OutputModelArrayHLcorrected[[1]],OutputModelArrayHLcorrected[[2]],OutputModelArrayHLcorrected[[3]],OutputModelArrayHLcorrected[[4]])
+OutputModelArrayHLcorrected_df["Temp"]<-OutputModel_N_df["Temp"]
+OutputModelArrayHLcorrected_df["Load"]<-OutputModel_N_df["Load"]
+write.csv(OutputModelArrayHLcorrected_df, file = "OutputModelArrayHLLLad1.csv")
+```
+## Result part 2: Output simulation
+## Part 4: Compare the two cases
+
+```{r}
+case1<-read.csv("OutputModelArrayHLLLnonadjust.csv")[,-1]
+case2<-read.csv("OutputModelArrayHLLLad1.csv")[,-1]
+#case3<-read.csv("OutputModelArrayHLLLad2.csv")[,-1]
+case1["case"]<-rep(1,dim(case1)[1])
+case2["case"]<-rep(2,dim(case2)[1])
+case1["totalC"]<-case1["Csol"]+case1["Csta"]+case1["Csyn"]
+case2["totalC"]<-case2["Csol"]+case2["Csta"]+case2["Csyn"]
+#case3["case"]<-rep(3,dim(case3)[1])
+All<-rbind(case1,case2)
+a <- All %>% 
+  filter(Temp=="CC")
+case2H<- case2 %>%
+  filter(Temp == "HH")
+case1H<- case1 %>%
+  filter(Temp == "HH")
+
+```
+
+Comparing amount of carbon
+```{r}
+#1.Check degree days
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=CDD, colour = Temp, linetype=Load), size = 0.75)+
+  facet_wrap(vars(case))
+
+#2.carbon in each form
+##2.1not-thinking about the HH
+ggplot()+
+  geom_line(a,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(a,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(a,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour="red")+
+  geom_line(a,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  #facet_grid(rows = vars(Temp), cols = vars(Load))+
+  labs(title="[CC] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")+
+  ylim(0,0.6)
+ggplot()+
+  geom_line(case1H,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(case1H,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(case1H,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour="red")+
+  geom_line(case1H,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  #facet_grid(rows = vars(Temp), cols = vars(Load))+
+  labs(title="[case1H] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")+
+  ylim(0,0.6)
+ggplot()+
+  geom_line(case2H,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(case2H,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(case2H,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour="red")+
+  geom_line(case2H,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  #facet_grid(rows = vars(Temp), cols = vars(Load))+
+  labs(title="[case2H] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")+
+  ylim(0,0.6)
+#2.2consider both 
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=Csta,colour = Temp,linetype=Load), size = 0.75)+
+  facet_wrap(vars(case))+
+  labs(title="Csta = Amount of carbon in starch form per fruit (gC)", subtitle = "dCsta/dt = k3 * Csol - k2 * Csta", x = "Fruit age (days)")
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=Csyn, colour = Temp, linetype=Load), size = 0.75)+
+  facet_wrap(vars(case))+
+  labs(title="Csyn = Amount of carbon in non-sugar and non-starch forms per fruit (gC)", subtitle = "dCsyn/dt = k1 * Csol", x = "Fruit age (days)")
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=Csol, colour = Temp, linetype=Load), size = 0.75)+
+  facet_wrap(vars(case))+
+  labs(title="Csol = Amount of carbon in sugar form per fruit (gC)", subtitle = "dCsol/dt = dCsup/dt + k2 * Csta -(k1+k3) * Csol - dCrep/dt", x = "Fruit age (days)")
+
+
+#3.1compare amount of carbon in each form in the same graph
+ggplot()+
+  geom_line(case1,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(case1,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(case1,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour="red")+
+  geom_line(case1,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  facet_grid(rows = vars(Temp), cols = vars(Load))+
+  labs(title="[Case 1] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")
+ggplot()+
+  geom_line(case2,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(case2,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(case2,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour=2)+
+  geom_line(case2,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  facet_grid(rows = vars(Temp), cols = vars(Load))+
+  labs(title="[Case 2] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")
+##3.2change the facet
+ggplot()+
+  geom_line(case1,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(case1,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(case1,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour="red")+
+  geom_line(case1,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  facet_grid(rows = vars(Load), cols = vars(Temp))+
+  labs(title="[Case 1] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")
+ggplot()+
+  geom_line(case2,mapping=aes(x=DAA_d,y=totalC, linetype=Load), size = 0.75, colour=4)+
+  geom_line(case2,mapping=aes(x=DAA_d,y=Csol, linetype=Load), size = 0.75, colour=1)+
+  geom_line(case2,mapping=aes(x=DAA_d,y=Csta, linetype=Load), size = 0.75, colour=2)+
+  geom_line(case2,mapping=aes(x=DAA_d,y=Csyn, linetype=Load), size = 0.75, colour=3)+
+  facet_grid(rows = vars(Load), cols = vars(Temp))+
+  labs(title="[Case 2] Amount of total carbon per fruit and in each form under 4 treatments", subtitle = "black=Csol, red=Csta, green= Csyn, blue = Csol+Csta+Csyn", x = "Fruit age (days)")
+```
+
+Comparing water content and rate constants
+```{r}
+#4.2 Water content
+ggplot()+
+  geom_line(case2,mapping=aes(x=DAA_d,y=WC, colour = Temp, linetype=Load), size = 0.75)+
+  geom_point(mapping=aes(x=agetest/24,y=WCmax00), size = 0.25)+
+  #facet_wrap(vars(case))+
+  labs(title="[Case 2] Water content", subtitle = "WC=100*(1-DW/FW)", x = "Fruit age (days)", y="Water content (% of FW)")
+#4.1 zoom in water content
+ggplot()+
+  geom_line(case2,mapping=aes(x=DAA_d,y=WC, colour = Temp, linetype=Load), size = 0.75)+
+  facet_wrap(vars(Load))+
+  coord_cartesian(xlim = c(15, 25), ylim = c(87.5, 90))
+
+#5. focus on rate constants
+#5.1 not consider temp (only load) 
+ggplot()+
+  geom_line(a,mapping=aes(x=DAA_d,y=k1,linetype=Load), size = 0.75)+
+  labs(title="k1 = reaction rate constant of conversion of sugars to structural compounds", subtitle = "k1 = lambda* exp(alpha*(WCmax - WC)) * (DW_dt/DW)^(exp(beta*(WCmax - WC)))", x = "Fruit age (days)")
+ggplot()+
+  geom_line(a,mapping=aes(x=DAA_d,y=k3, linetype=Load), size = 0.75)+
+  labs(title="k3 = reaction rate constant of conversion of sugars to starch", subtitle = "k3 = k30* exp(gamma*(WCmax - WC))/(1+ exp((CDD - mu)/tau))", x = "Fruit age (days)")
+#5.2 consider temp
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=k3, colour = Temp, linetype=Load), size = 0.75)+
+  facet_wrap(vars(case))+
+  labs(title="k3 = reaction rate constant of conversion of sugars to starch", subtitle = "k3 = k30* exp(gamma*(WCmax - WC))/(1+ exp((CDD - mu)/tau))", x = "Fruit age (days)")
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=k1, colour = Temp, linetype=Load), size = 0.75)+
+  facet_wrap(vars(case))+
+  labs(title="k1 = reaction rate constant of conversion of sugars to structural compounds", subtitle = "k1 = lambda* exp(alpha*(WCmax - WC)) * (DW_dt/DW)^(exp(beta*(WCmax - WC)))", x = "Fruit age (days)")
+```
+
+Comparing dDW/dt
+```{r}
+#6.Focus on dDW
+ggplot()+
+  geom_line(data = inputCer2007HL, mapping = aes(x = DAA_d, y=dDW) , linetype =1)+
+  geom_line(data = inputCer2007LL,mapping = aes(x = DAA_d, y=dDWl), linetype = 2)+
+  geom_line(data = inputCer2007HL_H,mapping = aes(x = DAA_d, y=dDW_H), linetype = 1, col = "red")+
+  geom_line(data = inputCer2007LL_H,mapping = aes(x = DAA_d, y=dDWl_H), linetype = 2, col = "red")+
+  labs(title="Comparing the rate of dry matter change between HL20F (bold line) and LL5F (dashed line)", x = "Fruit age (days)", subtitle = "Red = Adjusted data, Black = Non-adjusted data", y = "dDW/dt (g/h)")
+#7.Focus on relative dDW/dt
+ggplot()+
+  geom_line(data = inputCer2007HL_H, mapping = aes(x = DAA_d, y=dDW_H/DW_H) , linetype =1, colour = "red")+
+  geom_line(data = inputCer2007LL_H,mapping = aes(x = DAA_d, y=dDWl_H/DWl_H), linetype = 2, colour = "red")+
+  geom_line(data = inputCer2007HL, mapping = aes(x = DAA_d, y=dDW/DW) , linetype =1)+
+  geom_line(data = inputCer2007LL,mapping = aes(x = DAA_d, y=dDWl/DWl), linetype = 2)+
+  labs(title="Comparing the relative rate of dry matter change between HL20F and LL5F", x = "Fruit age (days)", y = "(dDW/dt)/DW (1/h)")
+```
+
+Comparing rate of respiration
+```{r}
+#8.Comparing rate of respiration or rate of supply (add cDW to qg) 
+qg<-0.092
+qm<-0.004
+Q10<-1.4
+cDW<- 0.44
+
+dCrep20F_C<-qm * inputCer2007HL["DW"] * Q10^((CCHH[[1]]-20)/10) + (qg) * inputCer2007HL["dDW"]
+dCrep5F_C<-qm * inputCer2007LL["DWl"] * Q10^((CCHH[[1]]-20)/10) + (qg) * inputCer2007LL["dDWl"]
+dCrep20F_H<-qm * inputCer2007HL_H["DW_H"] * Q10^((CCHH[[2]]-20)/10) + (qg) * inputCer2007HL_H["dDW_H"]
+dCrep5F_H<-qm * inputCer2007LL_H["DWl_H"] * Q10^((CCHH[[2]]-20)/10) + (qg) * inputCer2007LL_H["dDWl_H"]
+
+age205F<-seq(144,1439)
+dCrep20F_C<-cbind(dCrep20F_C,age205F)
+dCrep5F_C<-cbind(dCrep5F_C,age205F)
+dCrep20F_H<-cbind(dCrep20F_H,age205F)
+dCrep5F_H<-cbind(dCrep5F_H,age205F)
+colnames(dCrep20F_H)<-c("resrate", "age")
+colnames(dCrep5F_H)<-c("resrate", "age")
+colnames(dCrep20F_C)<-c("resrate", "age")
+colnames(dCrep5F_C)<-c("resrate", "age")
+ggplot()+
+  geom_smooth(data=dCrep5F_H ,mapping = aes(x=age/24,y=resrate), linetype = 2, col = "red")+
+  geom_smooth(data=dCrep20F_H ,mapping = aes(x=age/24,y=resrate), linetype=1, col = "red")+
+  geom_smooth(data=dCrep5F_C ,mapping = aes(x=age/24,y=resrate), linetype = 2, col = "black")+
+  geom_smooth(data=dCrep20F_C ,mapping = aes(x=age/24,y=resrate), linetype=1, col = "black")+
+  labs(x="Fruit age (days)", y = "dCrep/dt (g/h)", title = "[Case 2] Respiration rate between HL20F (bold) and LL5F (dashed)", subtitle = "dCrep/dt, red = HH, black = CC ")
+```
+
+```{r}
+#focus on soluble sugars
+#9.1 sugars
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=Sugar, colour = Temp, linetype=Load), size = 0.75)+
+  facet_grid(rows=vars(case))+
+  labs(title="Sugar = Amount of sugar per fruit (gSugar)", subtitle = "Sugar = Csol/csol, csol = 0.4 (gram of carbon in one gram of soluble sugar)", x = "Fruit age (days)")
+#9.2 sugar/FW
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=SSC, colour = Temp, linetype=Load), size = 0.75)+
+  facet_grid(rows=vars(case))+
+  labs(title="SSC = Amount of sugar per 100 g fresh weight (gSugar/100gFW)", subtitle = "SSC = Sugar/FW*100 = (Csol/csol)/FW*100, csol = 0.4 (gram of C in 1 gram of soluble sugar)", x = "Fruit age (days)", y = "SSC (gSugar/100gFW)")
+#9.3 Sugar/DW
+ggplot()+
+  geom_line(All,mapping=aes(x=DAA_d,y=SS, colour = Temp, linetype=Load), size = 0.75)+
+  facet_grid(rows=vars(case))+
+  labs(title="SS = Amount of sugar per 100 g dry weight (gSugar/100gDW)", subtitle = "SS = Sugar/DW*100 = (Csol/csol)/DW*100, csol = 0.4 (gram of C in 1 gram of soluble sugar)", x = "Fruit age (days)",  y = "SS (gSugar/100gDW)")
+```
+
+Compare the final values
+```{r}
+#10. focus only a mature fruit
+finalC<-All %>% 
+  filter(timestep == 1296)
+finalC<-finalC %>%
+  mutate(totalC=Csol+Csta+Csyn)
+ggplot(data=finalC)+
+  geom_point(mapping = aes(y=Csol/totalC*100, x=Temp, colour=Load), size =2, shape=1)+
+  geom_point(mapping = aes(y=Csyn/totalC*100, x=Temp, colour=Load), size =2, shape=4)+
+  geom_point(mapping = aes(y=Csta/totalC*100, x=Temp, colour=Load), size =2, shape=2)+
+  facet_wrap(vars(case))+
+  labs(title = "% carbon in sugar (circle), starch (triangle) or the other form (cross)", subtitle = "%Cx = Cx/TotalC*100", x= "Temperature pattern", y = "%C")+
+  theme_bw()+
+  scale_color_manual(values=c("red", "blue"))
+#a lower %sugar and a higher %syn, starch relatively unchanged under HL (but lower absolute Csol and Csyn for HL)
+#%sugar decrease for HH under both load
+
+```
+
+## Checking WCmax and WC
+I was trying to change WCmax as well -> but when scaled WCmax down -> not work -> delete Case 3
+In the previous code, I have assume that WCmax of HL or LL reduced under HH conditions but by different percentages base don the paper Gautier 2005
+However, the sugar content per 100g DW of HH HL was 100 gSugar/100gDW, which seemed incorrect. Therefore, one way out is to examing the WCmax. 
+Is the WCmax calculated de novo always higher than WC at all time? 
+Should we use one new WCmax for all treatments? - plotting the WC graph for all treatment and use the maximum points, and this must be based on the assumption that WCmax of all treatments are equal at a given age.
+
+Plot of the equation for WCmax and WC
+```{r}
+agetest<-seq(144,1439,by=1)
+WCmax00 <- (100- (23.39 * exp(-0.0211*agetest)+10.60))
+WCmaxHL <- (1-0.099)*(100- (23.39 * exp(-0.0211*agetest)+10.60))
+WCmaxLL <- (1-0.041)*(100- (23.39 * exp(-0.0211*agetest)+10.60))
+#Now, below is that plot we are after
+ggplot()+
+  geom_point(All,mapping=aes(x=DAA_d,y=WC, colour = Temp), size = 0.25)+
+  geom_point(mapping=aes(x=agetest/24,y=WCmax00), size = 0.25)+
+  geom_point(mapping=aes(x=agetest/24,y=WCmaxHL), colour = "red", size = 0.25)+
+  geom_point(mapping=aes(x=agetest/24,y=WCmaxLL), colour = "blue", size = 0.25)+
+  annotate("text", x = max(agetest/24)-5, y = 0.5+max(WCmax00), label = "WCmax")+
+  annotate("text", x = max(agetest/24)-5, y = 0.5+max(WCmaxHL), label = "WCmaxHL",colour = "red")+
+  annotate("text", x = max(agetest/24)-5, y = 0.5+max(WCmaxLL), label = "WCmaxLL",colour = "blue")+
+  labs(y = "Water Content [%FW]", x = "Fruit age [days]", title = "Water content (WC) overlayed with WCmax graphs", subtitle = "WCmaxLL and WCmaxHL calculated by scaling down WCmax00 by 90% and 94%, respectively")
+#Okay so, modified WCmax of HL and LL under HH that we have used in the previous situations were actually lower than simulated WC at most ages of all treatments
+#therefore, WCmax is best kept at WCmax00 
+
+#we can go beyoud that by looking at the raw data set 2007HL and LL
+```
+
+```{r}
+AllWC<-read.csv("/Users/panareeboonyuen/Desktop/intern/CodingforProject/AllWC.csv")
+colnames(AllWC)<-c("Treatment", "Genotype", "DAA", "FW", "DW")
+AllWC<- AllWC %>%
+  filter(Genotype=="Cervil")
+AllWC["WC"]<-(1- AllWC["DW"]/AllWC["FW"])*100  #calculate WC <- (1- DW/FW) *100 
+ggplot()+
+  geom_smooth(data=AllWC,mapping=aes(DAA,WC, colour=Treatment), size = 0.75)+
+  geom_point(data=AllWC, mapping=aes(DAA,WC, colour=Treatment), size = 0.75)+
+  geom_point(mapping=aes(x=agetest/24,y=WCmax00), size = 0.5)+
+  geom_point(mapping=aes(x=agetest/24,y=WCmaxHL), size = 0.5, colour="red")+
+  geom_point(mapping=aes(x=agetest/24,y=WCmaxLL), size = 0.5, colour="blue")+
+  annotate("text", x = max(agetest/24)-5, y = 0.25+max(WCmax00), label = "WCmax00")+
+  annotate("text", x = max(agetest/24)-5, y = 0.25+max(WCmaxHL), label = "WCmaxHL",colour = "red")+
+  annotate("text", x = max(agetest/24)-5, y = 0.25+max(WCmaxLL), label = "WCmaxLL",colour = "blue")+
+  labs(y = "Water Content [%FW]", x = "Fruit age [days]", title = "Water content (WC) overlayed with WCmax graphs", subtitle = "WCmaxLL and WCmaxHL calculated by scaling down WCmax00 by 90% and 94%, respectively")
+ggplot(data=AllWC)+
+  geom_smooth(mapping=aes(DAA,FW, colour=Treatment), size = 0.5)+
+  geom_point(mapping=aes(DAA,FW, colour=Treatment), size = 0.5)
+ggplot(data=AllWC)+
+  geom_smooth(mapping=aes(DAA,DW, colour=Treatment), size = 0.5)+
+  geom_point(mapping=aes(DAA,DW, colour=Treatment), size = 0.5)
+
+AllWC2007<-AllWC %>%
+  filter(Treatment=="2007_LL"| Treatment=="2007_HL")
+
+ggplot()+
+  geom_point(data=AllWC,mapping=aes(DAA,WC))+
+  geom_point(data=AllWC2007,mapping=aes(DAA,WC), col = "red")
+
+```
+
+
+
