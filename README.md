@@ -26,5 +26,4 @@ There are two main code files (added in this folder as R notebook (.Rmd) file)
    * Part 3.3: [Case 2] Varying temperature and run the model, assuming a change in FW and DW
    * Part 3.4: save them as "OutputModelArrayHLLLnonadjust.csv" and "OutputModelArrayHLLLad1.csv
 * Part 4: Compare the two cases
-   * 10 graphs produced in total
-   * Each should be described
+   * 10 graphs produced, each with the description
