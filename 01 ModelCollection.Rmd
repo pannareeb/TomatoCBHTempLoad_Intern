@@ -412,12 +412,3 @@ sugarmodH_Ad_W <- function(times,inputfun,c_DW = 0.44, c_sol = 0.4, c_sta = 0.44
 }
 ```
 
-## 5. sugarmodW 
-4. sugarmodW - used with inputCer2014_WD and WW under CC conditions
-- inputfun = inputfunWD and inputfunWW for inputCer2014WD or inputCer2014WW, respectively
-- modify DW0, Csol0, Csta0, Csyn0 to be of non-adjusted FW and DW from inputCer2014WD and inputCer2014WW
-- No modification of WC as a result for heat treatment
-
-5. sugarmodW_H - used with inputCer2014 under HH conditions
-- inputfun = inputfunWD_H and inputfunWW_H (outputting adjusted FW and DW when under HH condition)
-- modify DW0 (to be reduced for both WD and WW, as it gets the input form the adjusted )
