@@ -1,4 +1,6 @@
 # Intern_tomato_KMUTT
+This is an internship project, carrying out over 2 months in 2022, with the Research assistant at Center for Agricultural Systems Biology (CASB), King Mongkut's University of Technology Thonburi, Thailand.
+
 ## SUGAR model and data
 SUGAR model here based on pseudocodes given in a paper Chen, J., Vercambre, G., Kang, S., Bertin, N., Gautier, H., & Génard, M. (2020). Fruit water content as an indication of sugar metabolism improves simulation of carbohydrate accumulation in tomato fruit. Journal of Experimental Botany, 71(16), 5010–5026. https://doi.org/10.1093/jxb/eraa225
 ## Explanation of two R codes
